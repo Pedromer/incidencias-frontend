@@ -1,11 +1,5 @@
 window.App = window.App || {};
 
-App.config = {
-    apiBaseUrl: 'https://incidencias-backend-production-153c80c4.up.railway.app/api',
-    tokenKey: 'incidencias_token',
-    userKey: 'incidencias_user',
-};
-
 App.state = { user: null, categories: [], incidents: [] };
 
 App.helpers = {
