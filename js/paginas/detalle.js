@@ -2,6 +2,75 @@ window.App = window.App || {};
 App.pages = App.pages || {};
 
 App.pages.detail = {
+    conversationTimer: null,
+    conversationRefreshPending: false,
+    lastCommentSignature: null,
+    currentIncident: null,
+    commentSignature(commentItems) {
+        return JSON.stringify(
+            commentItems.map((comment) => ({
+                id: comment.id,
+                autorId:
+                    comment.user_id ?? comment.autor?.id ?? comment.user?.id ?? comment.usuario?.id,
+                contenido: comment.contenido ?? comment.comment ?? comment.comentario,
+                createdAt: comment.created_at,
+            }))
+        );
+    },
+    refreshConversation() {
+        if (!this.currentIncident?.id || this.conversationRefreshPending) return;
+
+        this.conversationRefreshPending = true;
+        App.api.comments(this.currentIncident.id)
+            .done((response) => {
+                const commentItems = App.helpers.toList(response, 'comentarios');
+                const signature = this.commentSignature(commentItems);
+
+                if (signature === this.lastCommentSignature) return;
+
+                this.lastCommentSignature = signature;
+                const thread = $('.conversation-thread');
+                const scrollTop = thread.scrollTop();
+                const nearBottom =
+                    thread[0]?.scrollHeight - thread[0]?.scrollTop - thread[0]?.clientHeight < 80;
+
+                thread
+                    .html(this.threadHtml(this.currentIncident, commentItems))
+                    .scrollTop(nearBottom ? thread[0].scrollHeight : scrollTop);
+            })
+            .fail(() => {
+                // El siguiente ciclo intenta nuevamente; no interrumpe la conversación abierta.
+            })
+            .always(() => {
+                this.conversationRefreshPending = false;
+            });
+    },
+    startConversationPolling() {
+        this.stopConversationPolling();
+
+        this.visibilityHandler = () => {
+            if (document.visibilityState === 'visible') {
+                this.refreshConversation();
+            }
+        };
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+
+        this.conversationTimer = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                this.refreshConversation();
+            }
+        }, 5000);
+    },
+    stopConversationPolling() {
+        if (this.conversationTimer) {
+            window.clearInterval(this.conversationTimer);
+            this.conversationTimer = null;
+        }
+        if (this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+            this.visibilityHandler = null;
+        }
+    },
     threadHtml(incident, commentItems) {
         const messages = [
             {
@@ -105,14 +174,16 @@ App.pages.detail = {
                         .done((response) => {
                             const thread = $('.conversation-thread');
                             const scrollTop = thread.scrollTop();
+                            const commentItems = App.helpers.toList(response, 'comentarios');
+                            this.lastCommentSignature = this.commentSignature(commentItems);
                             thread
                                 .html(
                                     this.threadHtml(
                                         incident,
-                                        App.helpers.toList(response, 'comentarios')
+                                        commentItems
                                     )
                                 )
-                                .scrollTop(scrollTop);
+                                .scrollTop(thread[0].scrollHeight);
                         })
                         .fail(() =>
                             App.helpers.showAlert(
@@ -173,6 +244,15 @@ App.pages.detail = {
                     button.prop('disabled', false);
                 });
         });
+
+        this.currentIncident = incident;
+        this.lastCommentSignature = this.commentSignature(commentItems);
+        this.startConversationPolling();
+    },
+    unload() {
+        this.stopConversationPolling();
+        this.currentIncident = null;
+        this.lastCommentSignature = null;
     },
     load(id) {
         $('#incident-detail').html(

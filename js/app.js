@@ -99,3 +99,9 @@ if (pageInitializer) {
             .fail(() => App.session.logout(false));
     }
 }
+
+window.addEventListener('beforeunload', () => {
+    if ($('#incident-detail').length && App.pages.detail?.unload) {
+        App.pages.detail.unload();
+    }
+});
